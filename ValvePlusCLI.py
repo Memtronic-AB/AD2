@@ -32,6 +32,7 @@ NSLEEP = 7
 NRESET = 2
 SSTB0 = 6
 SSTB1 = 4
+ADS7830_ADR = 0x48          # address pins all set to zero
 
 def setBit(int_type, offset):
     '''setBit() returns an integer with the bit at 'offset' set to 1.'''
@@ -269,8 +270,13 @@ ConfigureSPI(SPI_SPEED,SPI_CLK,SPI_MOSI,SPI_MISO)
 # enable output/mask on high nibble of low byte IO pins, from DIO 4 to 7
 AD.dwf.FDwfDigitalIOOutputEnableSet(AD.hdwf, c_int(0x00D4)) 
 
-AD.PowerCtrl(3.3, True, 0, False)
-
+AD.PowerCtrl(3.3, True, 0, False)       # switch on 3.3V 
+time.sleep(0.5)                         # wait to power up
+AD.InitI2C(1e5,1,0)
+AD.dwf.FDwfDigitalI2cStretchSet(AD.hdwf, c_int(0))  # switch off clock stretch, otherwise digital IO conflicts with I2C 
+rgTX = (c_ubyte*2)(0x00)        
+rgRX = (c_ubyte*2)()
+        
 drv8823_reset ()        # reset chip
 SetReset (1)
 SetSleep (1)
@@ -328,16 +334,38 @@ while True:
     elif n.strip() == 'r1':
         print ("-- no reset --")
         SetReset(1)        
+    
     elif n.strip() == 'help':
         print ("o     :   open all valves")
         print ("c     :   close all valves")
         print ("o0    :   open valve #0")
         print ("c0    :   close valve #0")
+        print ("a0    :   read AD channel 0")
         print ("s0    :   set nSLEEP pin to 0")
         print ("s1    :   set nSLEEP pin to 1")
         print ("r0    :   set nRESET pin to 0 - reset")
         print ("r1    :   set nRESET pin to 1 - normal")
         print ("q     :   quit\n")
+    elif len(n.strip()) > 0:
+        if n.strip()[0] == 'a':
+            if (len(n.strip()) > 1):
+                if n[1] >= '0' and n[1] <= '7':
+                    rgTX[0] =  c_ubyte((int(n[1]) << 4) | 0x8F)
+                    AD.dwf.FDwfDigitalI2cWriteRead(AD.hdwf, c_int(ADS7830_ADR<<1), rgTX, c_int(1), rgRX, c_int(1), byref(AD.iNak)) # write 1 bytes and read 1 byte
+                    if AD.iNak.value != 0:
+                        print("No ACK from ADS7830. NAK "+str(AD.iNak.value))
+                    else:
+                        print (rgRX[0])
+                else:
+                    print ('Unknown command:-(')
+            else:
+                AD.dwf.FDwfDigitalI2cRead(AD.hdwf, c_int(ADS7830_ADR<<1), rgRX, c_int(1), byref(AD.iNak)) # read 1 byte
+                if AD.iNak.value != 0:
+                    print("No ACK from ADS7830. NAK "+str(AD.iNak.value))
+                else:
+                    print (rgRX[0])     
+        else:
+            print ("Unknown command:-(")    
     else:
         print ("Unknown command:-(")
 
