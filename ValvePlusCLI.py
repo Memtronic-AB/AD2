@@ -23,13 +23,13 @@ global cd_val2
 
 #CONSTANTS
 SPI_SPEED = 1E5
-SPI_CLK = 0
-SPI_MOSI = 1
-SPI_MISO = 2
-NSLEEP = 4
-NRESET = 5
+SPI_CLK = 5
+SPI_MOSI = 3
+SPI_MISO = 8    # not used
+NSLEEP = 7
+NRESET = 2
 SSTB0 = 6
-SSTB1 = 7
+SSTB1 = 4
 
 
 
@@ -54,18 +54,18 @@ def ConfigureSPI(speed_hz,dio_clk,dio_mosi,dio_miso):
     dwf.FDwfDigitalSpiClockSet(hdwf, c_int(dio_clk)) #DIO-0 = SPI_CLK
 
     # select which pin is SPI data
-    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(0), c_int(dio_mosi)) # 0 DQ0_MOSI_SISO = DIO-1
-    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(1), c_int(dio_miso)) # 1 DQ1_MISO = DIO-3
+    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(0), c_int(dio_mosi)) # 0 DQ0_MOSI_SISO 
+    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(1), c_int(dio_miso)) # 1 DQ1_MISO 
 
-    # data mode specifies polarities (I think....)
-    dwf.FDwfDigitalSpiModeSet(hdwf, c_int(0))
+    # data mode specifies polarities (cpol and cpha)
+    dwf.FDwfDigitalSpiModeSet(hdwf, c_int(0))   # mode = 0
 
     # Sets in which order the data is sent / received
     dwf.FDwfDigitalSpiOrderSet(hdwf, c_int(0)) # 0 LSB first
 
     # sets the CS pin - not used here 
     #                              DIO       value: 0 low, 1 high, -1 high impedance
-    dwf.FDwfDigitalSpiSelect(hdwf, c_int(2), c_int(1)) # CS DIO-0 high
+    dwf.FDwfDigitalSpiSelect(hdwf, c_int(9), c_int(1)) # CS DIO-8 high
     # cDQ 0 SISO, 1 MOSI/MISO, 2 dual, 4 quad
     #                                cDQ       bits 0    data 0
     dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(0), c_int(0)) # start driving the channels, clock and data
@@ -279,13 +279,20 @@ val_array = [0x071c, 0x171c, 0x071c, 0x171c]
 ConfigureSPI(SPI_SPEED,SPI_CLK,SPI_MOSI,SPI_MISO)
 
 #-------------------- Set digital control signals ----------------------
-# nSLEEP = 4    unknown behaviour
-# nRESET = 5    active low - set to high at all time
-# SSTB0 = 6     set to low to control first chip. End with a high pulse. 
-# SSTB1 = 7     set to low to control second chip. End with a high pulse.
+# nSLEEP    unknown behaviour
+# nRESET    active low - set to high at all time
+# SSTB0     set to low to control first chip. End with a high pulse. 
+# SSTB1     set to low to control second chip. End with a high pulse.
 
 # enable output/mask on high nibble of low byte IO pins, from DIO 4 to 7
-dwf.FDwfDigitalIOOutputEnableSet(hdwf, c_int(0x00F0)) 
+dwf.FDwfDigitalIOOutputEnableSet(hdwf, c_int(0x00D4)) 
+
+# Power on
+dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(0), c_int(1), c_double(+3.3)) 
+dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(0), c_int(0), c_double(1))
+dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(1), c_int(1), c_double(0))
+dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(1), c_int(0), c_double(0))
+dwf.FDwfAnalogIOEnableSet(hdwf, c_int(True))
 
 drv8823_reset ()        # reset chip
 SetReset (1)
