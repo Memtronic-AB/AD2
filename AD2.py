@@ -92,6 +92,20 @@ class AD2():
         self.dwf.FDwfAnalogInChannelRangeSet(self.hdwf, c_int(0), c_double(5)) 
         self.dwf.FDwfAnalogInConfigure(self.hdwf, c_bool(False), c_bool(False)) 
 
+    def InitDigitalIO (self, mask):
+        '''Sets up digital IO:\n 
+        mask = output bit mask register (1=output, 0=input)\n
+        e.g. 0x0004 sets bit 2 to output.'''
+
+        # --- Verkar som att digital output enable sabbar I2C bussen som ligger bredvid. ----
+        self.dwf.FDwfDigitalIOOutputEnableSet(self.hdwf, c_int(mask))
+
+    def SetDigitalIO (self, value):
+        '''Sets the digital IO:\n 
+        value = output value of all output pins (1=high, 0=low)\n
+        e.g. 0x0004 sets DIO 2 to high = 1.'''
+        
+        self.dwf.FDwfDigitalIOOutputSet(self.hdwf, c_int(value))
 
     def CloseAD2 (self):
         '''Switches off the power and closes the AD2 session'''
