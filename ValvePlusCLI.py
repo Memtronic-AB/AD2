@@ -9,12 +9,14 @@
 
     V0.1    2020-10-13  First version - for patch cables
     V0.2    2021-11-19  Updated to work with AD2-CEVC interface hardware 
+    V0.x    moved to github
 """
 
 from ctypes import *
 import math
 import sys
 import time
+import AD2
 
 #global ab_val1
 #global cd_val1
@@ -31,8 +33,6 @@ NRESET = 2
 SSTB0 = 6
 SSTB1 = 4
 
-
-
 def setBit(int_type, offset):
     '''setBit() returns an integer with the bit at 'offset' set to 1.'''
     mask = 1 << offset
@@ -48,27 +48,27 @@ def ConfigureSPI(speed_hz,dio_clk,dio_mosi,dio_miso):
 
     print("Configuring SPI...")
     # set the SPI frequency (in Hz)
-    dwf.FDwfDigitalSpiFrequencySet(hdwf, c_double(speed_hz))
+    AD.dwf.FDwfDigitalSpiFrequencySet(AD.hdwf, c_double(speed_hz))
 
     # select which pin is SPI clock
-    dwf.FDwfDigitalSpiClockSet(hdwf, c_int(dio_clk)) #DIO-0 = SPI_CLK
+    AD.dwf.FDwfDigitalSpiClockSet(AD.hdwf, c_int(dio_clk)) #DIO-0 = SPI_CLK
 
     # select which pin is SPI data
-    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(0), c_int(dio_mosi)) # 0 DQ0_MOSI_SISO 
-    dwf.FDwfDigitalSpiDataSet(hdwf, c_int(1), c_int(dio_miso)) # 1 DQ1_MISO 
+    AD.dwf.FDwfDigitalSpiDataSet(AD.hdwf, c_int(0), c_int(dio_mosi)) # 0 DQ0_MOSI_SISO 
+    AD.dwf.FDwfDigitalSpiDataSet(AD.hdwf, c_int(1), c_int(dio_miso)) # 1 DQ1_MISO 
 
     # data mode specifies polarities (cpol and cpha)
-    dwf.FDwfDigitalSpiModeSet(hdwf, c_int(0))   # mode = 0
+    AD.dwf.FDwfDigitalSpiModeSet(AD.hdwf, c_int(0))   # mode = 0
 
     # Sets in which order the data is sent / received
-    dwf.FDwfDigitalSpiOrderSet(hdwf, c_int(0)) # 0 LSB first
+    AD.dwf.FDwfDigitalSpiOrderSet(AD.hdwf, c_int(0)) # 0 LSB first
 
     # sets the CS pin - not used here 
     #                              DIO       value: 0 low, 1 high, -1 high impedance
-    dwf.FDwfDigitalSpiSelect(hdwf, c_int(9), c_int(1)) # CS DIO-8 high
+    AD.dwf.FDwfDigitalSpiSelect(AD.hdwf, c_int(9), c_int(1)) # CS DIO-8 high
     # cDQ 0 SISO, 1 MOSI/MISO, 2 dual, 4 quad
     #                                cDQ       bits 0    data 0
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(0), c_int(0)) # start driving the channels, clock and data
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(0), c_int(0)) # start driving the channels, clock and data
 
 def drv8823_reset ():
     # reset the chip -  SSTB1 = 0, SSTB0 = 0, nRESET = 0, nSLEEP = 1
@@ -80,22 +80,22 @@ def drv8823_reset ():
 def SetSleep (state):
     ''' Controls the nSLEEP pin - state = 0 -> sleep; state = 1 -> awake'''
     temp = c_int()
-    dwf.FDwfDigitalIOOutputGet (hdwf, byref(temp))
+    AD.dwf.FDwfDigitalIOOutputGet (AD.hdwf, byref(temp))
     if (state == 0):
         temp = temp.value & ~(0x01<<NSLEEP)
     else:
         temp = temp.value | (0x01<<NSLEEP)
-    dwf.FDwfDigitalIOOutputSet(hdwf, temp) 
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, temp) 
 
 def SetReset (state):
     ''' controls the nRESET signal - state = 0 -> reset, state = 1 -> normal.'''
     temp = c_int()
-    dwf.FDwfDigitalIOOutputGet (hdwf, byref(temp))
+    AD.dwf.FDwfDigitalIOOutputGet (AD.hdwf, byref(temp))
     if (state == 0):
         temp = temp.value & ~(0x01<<NRESET)
     else:    
         temp = temp.value | (0x01<<NRESET)
-    dwf.FDwfDigitalIOOutputSet(hdwf, temp)         
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, temp)         
 
 def ClockSSTB (SSTB_sig):
     ''' clocks the SSTB0 or SSTB1 signal (active high) according to parameter SSTB_sig.'''
@@ -104,12 +104,12 @@ def ClockSSTB (SSTB_sig):
         mask = 0x01 << SSTB0
     else:
         mask = 0x01 << SSTB1
-    dwf.FDwfDigitalIOOutputGet (hdwf, byref(temp))
+    AD.dwf.FDwfDigitalIOOutputGet (AD.hdwf, byref(temp))
     temp = temp.value | mask
-    dwf.FDwfDigitalIOOutputSet(hdwf, temp)      # set SSTB
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, temp)      # set SSTB
     time.sleep (0.01)
     temp = temp & ~mask
-    dwf.FDwfDigitalIOOutputSet(hdwf, temp)      # clear SSTB
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, temp)      # clear SSTB
 
 
 def drv8823_bridge_ctrl (bridge, state, dir, val_array):
@@ -120,55 +120,55 @@ def drv8823_bridge_ctrl (bridge, state, dir, val_array):
         if (dir == 0):      val_array[0] = clrBit(val_array[0],1)
         else:               val_array[0] = setBit(val_array[0],1)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 1):
         if (state == 0):    val_array[0] = clrBit(val_array[0],6)
         else:               val_array[0] = setBit(val_array[0],6)
         if (dir == 0):      val_array[0] = clrBit(val_array[0],7)
         else:               val_array[0] = setBit(val_array[0],7)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 2):
         if (state == 0):    val_array[1] = clrBit(val_array[1],0)
         else:               val_array[1] = setBit(val_array[1],0)
         if (dir == 0):      val_array[1] = clrBit(val_array[1],1)
         else:               val_array[1] = setBit(val_array[1],1)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 3):
         if (state == 0):    val_array[1] = clrBit(val_array[1],6)
         else:               val_array[1] = setBit(val_array[1],6)
         if (dir == 0):      val_array[1] = clrBit(val_array[1],7)
         else:               val_array[1] = setBit(val_array[1],7)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 4):
         if (state == 0):    val_array[2] = clrBit(val_array[2],0)
         else:               val_array[2] = setBit(val_array[2],0)
         if (dir == 0):      val_array[2] = clrBit(val_array[2],1)
         else:               val_array[2] = setBit(val_array[2],1)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 5):
         if (state == 0):    val_array[2] = clrBit(val_array[2],6)
         else:               val_array[2] = setBit(val_array[2],6)
         if (dir == 0):      val_array[2] = clrBit(val_array[2],7)
         else:               val_array[2] = setBit(val_array[2],7)
         # send data to second chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 6):
         if (state == 0):    val_array[3] = clrBit(val_array[3],0)
         else:               val_array[3] = setBit(val_array[3],0)
         if (dir == 0):      val_array[3] = clrBit(val_array[3],1)
         else:               val_array[3] = setBit(val_array[3],1)
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
     elif (bridge == 7):
         if (state == 0):    val_array[3] = clrBit(val_array[3],6)
         else:               val_array[3] = setBit(val_array[3],6)
         if (dir == 0):      val_array[3] = clrBit(val_array[3],7)
         else:               val_array[3] = setBit(val_array[3],7)
         # send data to first chip
-        dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+        AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
     # ------ clock the data 
     if (bridge <= 3):
         ClockSSTB (0)
@@ -193,85 +193,67 @@ def closeValve (valve, val_array):
 def openAllValves (val_array):
     '''Used to open all eight valves simultaneously. Note these xxxAllValve routines do not handle reset sleep SSTB the same way as the other routines. There was not enough time for that.'''
     val_array = [0x075d, 0x175d, 0x075d, 0x175d]    # to open all bridges for valve open
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
     time.sleep (0.006)
     val_array = [0x071c, 0x171c, 0x071c, 0x171c]    # close all bridges
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
     return val_array    
 
 def closeAllValves (val_array):
     '''Used to close all eight valves simultaneously.'''
     val_array = [0x07df, 0x17df, 0x07df, 0x17df]    # to open all bridges for valve close
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
     #time.sleep (0.006)
     val_array = [0x079e, 0x179e, 0x079e, 0x179e]    # close all bridges
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x70))                               # clock data to 1st chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30)) 
-    dwf.FDwfDigitalSpiWriteOne(hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0xb0))                               # clock data to 2nd chip
-    dwf.FDwfDigitalIOOutputSet(hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[0])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[1])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x70))                               # clock data to 1st chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[2])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30)) 
+    AD.dwf.FDwfDigitalSpiWriteOne(AD.hdwf, c_int(1), c_int(16), c_uint(val_array[3])) # write 16 bit to MOSI (DIO1)
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0xb0))                               # clock data to 2nd chip
+    AD.dwf.FDwfDigitalIOOutputSet(AD.hdwf, c_int(0x30))
     return val_array    
 
-if sys.platform.startswith("win"):
-    dwf = cdll.LoadLibrary("dwf.dll")
-elif sys.platform.startswith("darwin"):
-    dwf = cdll.LoadLibrary("/Library/Frameworks/dwf.framework/dwf")
-else:
-    dwf = cdll.LoadLibrary("libdwf.so")
-
-hdwf = c_int()
-
-print("Opening first device")
-#dwf.FDwfDeviceOpen(c_int(-1), byref(hdwf))
-# device configuration of index 3 (4th) for Analog Discovery has 16kS digital-in/out buffer
-dwf.FDwfDeviceConfigOpen(c_int(-1), c_int(3), byref(hdwf)) 
-
-if hdwf.value == 0:
-    print("failed to open device")
-    szerr = create_string_buffer(512)
-    dwf.FDwfGetLastErrorMsg(szerr)
-    print(str(szerr.value))
-    quit()
+AD=AD2.AD2()
+AD.OpenAD2(3)
 
 val_array = [0x071c, 0x171c, 0x071c, 0x171c]
 #--------------------- Configure SPI -----------------
@@ -285,14 +267,9 @@ ConfigureSPI(SPI_SPEED,SPI_CLK,SPI_MOSI,SPI_MISO)
 # SSTB1     set to low to control second chip. End with a high pulse.
 
 # enable output/mask on high nibble of low byte IO pins, from DIO 4 to 7
-dwf.FDwfDigitalIOOutputEnableSet(hdwf, c_int(0x00D4)) 
+AD.dwf.FDwfDigitalIOOutputEnableSet(AD.hdwf, c_int(0x00D4)) 
 
-# Power on
-dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(0), c_int(1), c_double(+3.3)) 
-dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(0), c_int(0), c_double(1))
-dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(1), c_int(1), c_double(0))
-dwf.FDwfAnalogIOChannelNodeSet(hdwf, c_int(1), c_int(0), c_double(0))
-dwf.FDwfAnalogIOEnableSet(hdwf, c_int(True))
+AD.PowerCtrl(3.3, True, 0, False)
 
 drv8823_reset ()        # reset chip
 SetReset (1)
@@ -364,4 +341,4 @@ while True:
     else:
         print ("Unknown command:-(")
 
-dwf.FDwfDeviceCloseAll()
+AD.dwf.FDwfDeviceCloseAll()
