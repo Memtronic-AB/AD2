@@ -86,6 +86,31 @@ class AD2():
             quit()
         #time.sleep(1)
 
+    def InitSPI (self,speed, CS, SCLK, MOSI, MISO, DIR):
+        '''Sets up SPI communication. Works only for 1-bit wide SPI busses.
+        speed: in Hz,
+        CS: pin for CS,
+        SCLK: pin for SCLK
+        MOSI: pin for MOSI
+        MISO: pin for MISO
+        DIR: 1|0, 1=MSB,0=LSB'''
+        print("Configuring SPI...")
+
+        self.dwf.FDwfDigitalSpiClockSet(self.hdwf, c_int(SCLK))
+        self.dwf.FDwfDigitalSpiFrequencySet(self.hdwf, c_double(speed))
+        self.dwf.FDwfDigitalSpiDataSet(self.hdwf, c_int(0), c_int(MOSI)) # 0 DQ0_MOSI_SISO = DIO-2
+        self.dwf.FDwfDigitalSpiDataSet(self.hdwf, c_int(1), c_int(MISO)) # 1 DQ1_MISO = DIO-3
+        self.dwf.FDwfDigitalSpiIdleSet(self.hdwf, c_int(0), c_int(3)) # 0 DQ0_MOSI_SISO = DwfDigitalOutIdleZet
+        self.dwf.FDwfDigitalSpiIdleSet(self.hdwf, c_int(1), c_int(3)) # 1 DQ1_MISO = DwfDigitalOutIdleZet
+        self.dwf.FDwfDigitalSpiModeSet(self.hdwf, c_int(0))          # setup CPOL = 0 and CPHA = 0
+        self.dwf.FDwfDigitalSpiOrderSet(self.hdwf, c_int(DIR)) # 1 MSBit first
+        #                              DIO       value: 0 low, 1 high, -1 high impedance
+        self.dwf.FDwfDigitalSpiSelect(self.hdwf, c_int(0), c_int(CS)) # CS DIO-0 high
+        # cDQ 0 SISO, 1 MOSI/MISO, 2 dual, 4 quad
+        #                                cDQ       bits 0    data 0
+        self.dwf.FDwfDigitalSpiWriteOne(self.hdwf, c_int(1), c_int(0), c_int(0)) # start driving the channels, clock and data
+
+
     def InitVoltmeter(self):
         self.dwf.FDwfAnalogInChannelEnableSet(self.hdwf, c_int(0), c_bool(True)) 
         self.dwf.FDwfAnalogInChannelOffsetSet(self.hdwf, c_int(0), c_double(0)) 
@@ -115,3 +140,42 @@ class AD2():
         #This function closes devices opened by the calling process
         print ("Closing Analog Discovery connection.")
         self.dwf.FDwfDeviceCloseAll()
+
+    def UnitIdString (self, UnitId):
+        '''Returns a string representation of the UnitId.'''        
+        if (UnitId == 0):
+            return "Reserved"
+        elif(UnitId == 1):
+            return "CECC" 
+        elif(UnitId == 2):
+            return "CEDI"
+        elif(UnitId == 3):
+            return "CEFI"        
+        elif(UnitId == 4):
+            return "CEGC"
+        elif(UnitId == 5):
+            return "CEID"
+        elif(UnitId == 6):
+            return "CELC"
+        elif(UnitId == 7):
+            return "CELI"
+        elif(UnitId == 8):
+            return "CEOD"
+        elif(UnitId == 9):
+            return "CEOI"
+        elif(UnitId == 0x0A):
+            return "CESC"
+        elif(UnitId == 0x0B):
+            return "CESI"
+        elif(UnitId == 0x0C):
+            return "CEVC"
+        else:
+            return "unknown"
+
+    def ASCIIString(self, lista, start, len):
+        '''Returns a string representation of the ascii characters in lista.'''        
+        artno=""
+        lista = lista[start:start+len]
+        for t in lista:
+            artno += chr(t)
+        return artno
