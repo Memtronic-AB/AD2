@@ -74,7 +74,7 @@ dwf.FDwfAnalogIOEnableSet(hdwf, c_int(True))
 
 time.sleep(0.5)
 
-# initiate I2C on SCL = DIO-1, SDA = DIO-0 at speed 100kHz 
+# initiate I2C on SCL = DIO-0, SDA = DIO-1 at speed 100kHz 
 InitI2C (1e5, 0, 1)
 
 # ------------- Communicate using I2C --------------
@@ -83,6 +83,14 @@ iNak = c_int()
 I2C_ADR = 0x28      # 7-bit address of CELI
 x = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] # x-values (even sampling intervals) for slope calculation
 VALVES, DIR, TESTS = 8,2,10
+
+# start position sense
+rgTX = (c_ubyte*1)(0xf8)
+dwf.FDwfDigitalI2cWrite(hdwf, c_int(I2C_ADR<<1), rgTX, c_int(1), byref(iNak)) # write 1 bytes address
+
+# sense all 10 samples
+rgTX = (c_ubyte*2)(0xf6, 0x0a)
+dwf.FDwfDigitalI2cWrite(hdwf, c_int(I2C_ADR<<1), rgTX, c_int(2), byref(iNak)) # write 2 bytes address
 
 valveMatrix =np.array([['1','2','3','4','5','6','7','8'],[0xe0,0xe1,0xe2,0xe3,0xe4,0xe5,0xe6,0xe7],[0xb0,0xb1,0xb2,0xb3,0xb4,0xb5,0xb6,0xb7]])
 resMatrix = [[["" for x in range(VALVES)] for y in range(DIR)] for z in range (TESTS)]
